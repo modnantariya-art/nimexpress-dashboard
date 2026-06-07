@@ -246,9 +246,21 @@ function processData(values){
     var isCash=cust.indexOf('เงินสด')!==-1||cust.toLowerCase().indexOf('cash')!==-1;
     if(isCash){if(!bySenderCash[sender])bySenderCash[sender]=0;bySenderCash[sender]++;}
     else{if(!bySenderCredit[sender])bySenderCredit[sender]=0;bySenderCredit[sender]++;}
-    var monthKey='';var d=new Date(dateRaw);
-    if(!isNaN(d.getTime())){var y=d.getFullYear();var m=d.getMonth()+1;monthKey=y+'-'+(m<10?'0':'')+m;}
-    else if(typeof dateRaw==='string'&&dateRaw.length>=7){monthKey=dateRaw.substring(0,7);}
+  var monthKey='';
+if(typeof dateRaw==='number'&&dateRaw>1000){
+  // Excel serial date — แปลงเป็น JS Date
+  var excelDate=new Date((dateRaw-25569)*86400*1000);
+  var y=excelDate.getUTCFullYear();var m=excelDate.getUTCMonth()+1;
+  monthKey=y+'-'+(m<10?'0':'')+m;
+} else {
+  var d=new Date(dateRaw);
+  if(!isNaN(d.getTime())&&d.getFullYear()>1970){
+    var y=d.getFullYear();var m=d.getMonth()+1;
+    monthKey=y+'-'+(m<10?'0':'')+m;
+  } else if(typeof dateRaw==='string'&&dateRaw.length>=7){
+    monthKey=dateRaw.substring(0,7);
+  }
+}
     if(monthKey){
       if(!byMonth[monthKey])byMonth[monthKey]={count:0,value:0,cold:0,normal:0,valueCold:0,valueNormal:0};
       byMonth[monthKey].count++;byMonth[monthKey].value+=val;
