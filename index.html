@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Claim Dashboard — NimExpress</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Sarabun','Segoe UI',sans-serif;background:#f0f4f8;color:#2d3748;min-height:100vh;}
+#setup-screen{position:fixed;inset:0;background:#f0f4f8;display:flex;align-items:center;justify-content:center;z-index:200;padding:20px;}
+.setup-card{background:#fff;border-radius:20px;padding:32px;max-width:420px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.1);}
+.setup-logo{width:56px;height:56px;background:#1d4ed8;border-radius:14px;display:flex;align-items:center;justify-content:center;margin-bottom:16px;}
+.setup-logo-text{color:#fff;font-size:17px;font-weight:800;}
+.setup-title{font-size:20px;font-weight:700;color:#1a202c;margin-bottom:6px;}
+.setup-desc{font-size:13px;color:#718096;margin-bottom:24px;line-height:1.6;}
+.setup-label{font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;}
+.setup-input{width:100%;border:1.5px solid #e2e8f0;border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:16px;outline:none;font-family:monospace;}
+.setup-input:focus{border-color:#1d4ed8;}
+.setup-btn{width:100%;background:#1d4ed8;color:#fff;border:none;border-radius:10px;padding:12px;font-size:15px;font-weight:600;cursor:pointer;text-align:center;}
+.setup-btn:hover{background:#1e40af;}
+.setup-error{background:#fff5f5;border:1px solid #feb2b2;border-radius:8px;padding:10px 14px;font-size:12px;color:#c53030;margin-bottom:12px;display:none;}
+#header{background:#fff;border-bottom:1px solid #e2e8f0;padding:14px 18px 0;position:sticky;top:0;z-index:100;}
+.hd-top{display:flex;align-items:center;gap:12px;margin-bottom:12px;}
+.logo-box{width:48px;height:48px;background:#1d4ed8;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.logo-text{color:#fff;font-size:15px;font-weight:800;letter-spacing:.5px;}
+.brand-name{font-size:17px;font-weight:700;color:#1a202c;}
+.brand-sub{font-size:11px;color:#718096;text-transform:uppercase;letter-spacing:.5px;}
+.date-row{display:flex;align-items:center;gap:10px;margin-bottom:4px;}
+.dot-green{width:9px;height:9px;background:#48bb78;border-radius:50%;flex-shrink:0;}
+.chip{background:#f7fafc;border:1px solid #e2e8f0;border-radius:99px;padding:5px 14px;font-size:13px;color:#4a5568;}
+.refresh-btn{background:#f7fafc;border:1px solid #e2e8f0;border-radius:99px;padding:5px 14px;font-size:13px;color:#4a5568;cursor:pointer;}
+.refresh-btn:hover{background:#e2e8f0;}
+.settings-btn{background:none;border:none;font-size:18px;cursor:pointer;color:#718096;padding:5px;margin-left:auto;}
+.tabs{display:flex;margin-top:4px;}
+.tab{padding:10px 22px;font-size:15px;color:#718096;border-bottom:2px solid transparent;cursor:pointer;font-weight:500;}
+.tab.active{color:#0d9488;border-bottom-color:#0d9488;font-weight:700;}
+#content{max-width:960px;margin:0 auto;padding:18px;display:flex;flex-direction:column;gap:16px;}
+.page{display:none;}
+.page.active{display:flex;flex-direction:column;gap:16px;}
+.kpi-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.kpi-card{background:#fff;border-radius:18px;padding:22px 18px 18px;border:1.5px solid #e2e8f0;position:relative;box-shadow:0 2px 10px rgba(0,0,0,.06);}
+.kpi-card.blue{border-top:4px solid #3b82f6;} .kpi-card.red{border-top:4px solid #f87171;}
+.kpi-card.amber{border-top:4px solid #f59e0b;} .kpi-card.green{border-top:4px solid #34d399;}
+.kpi-card.teal{border-top:4px solid #0d9488;} .kpi-card.cyan{border-top:4px solid #06b6d4;}
+.kpi-card.purple{border-top:4px solid #8b5cf6;}
+.kpi-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;position:absolute;top:18px;right:16px;}
+.kpi-icon.blue{background:#eff6ff;color:#3b82f6;} .kpi-icon.red{background:#fff5f5;color:#f87171;}
+.kpi-icon.amber{background:#fffbeb;color:#f59e0b;} .kpi-icon.green{background:#f0fdf4;color:#34d399;}
+.kpi-icon.teal{background:#f0fdfa;color:#0d9488;} .kpi-icon.cyan{background:#ecfeff;color:#06b6d4;}
+.kpi-icon.purple{background:#f5f3ff;color:#8b5cf6;}
+.kpi-label{font-size:12px;color:#94a3b8;margin-bottom:10px;font-weight:500;}
+.kpi-val{font-size:36px;font-weight:800;line-height:1;}
+.kpi-val.blue{color:#2563eb;} .kpi-val.red{color:#dc2626;}
+.kpi-val.amber{color:#b45309;} .kpi-val.green{color:#059669;}
+.kpi-val.teal{color:#0d9488;} .kpi-val.cyan{color:#0891b2;} .kpi-val.purple{color:#7c3aed;}
+.kpi-sub{font-size:12px;color:#a0aec0;margin-top:8px;}
+.card{background:#fff;border-radius:16px;padding:18px 20px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.04);}
+.card-title{font-size:16px;font-weight:700;color:#2d3748;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+.tbl-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-size:14px;}
+th{color:#94a3b8;font-size:12px;font-weight:700;padding:8px 10px;border-bottom:2px solid #e2e8f0;text-align:right;white-space:nowrap;}
+th:first-child{text-align:left;}
+td{padding:10px;border-bottom:1px solid #f1f5f9;text-align:right;vertical-align:middle;}
+td:first-child{text-align:left;color:#2d3748;font-weight:600;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:#f8fffe;}
+.bill-num{color:#0891b2;font-weight:700;} .baht-num{color:#0d9488;font-weight:700;}
+.bar-wrap{display:flex;justify-content:flex-end;}
+.mini-bar-bg{width:70px;background:#f1f5f9;border-radius:99px;height:7px;}
+.mini-bar{height:7px;border-radius:99px;background:#0891b2;}
+.badge{font-size:11px;font-weight:600;padding:3px 10px;border-radius:99px;}
+.badge-cash{background:#fef9c3;color:#854d0e;} .badge-credit{background:#eff6ff;color:#1d4ed8;}
+.top10-list{display:flex;flex-direction:column;gap:2px;}
+.li{display:flex;align-items:center;gap:10px;padding:8px 6px;border-radius:8px;}
+.li:hover{background:#f8fffe;}
+.li-rank{width:24px;height:24px;border-radius:6px;background:#f1f5f9;font-size:11px;color:#94a3b8;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:700;}
+.li-rank.r1{background:#fef9c3;color:#854d0e;} .li-rank.r2{background:#f1f5f9;color:#475569;} .li-rank.r3{background:#fff7ed;color:#c2410c;}
+.li-name{font-size:13px;color:#374151;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.li-bar-bg{width:80px;background:#f1f5f9;border-radius:99px;height:6px;flex-shrink:0;}
+.li-bar{height:6px;border-radius:99px;} .li-val{font-size:12px;color:#6b7280;width:28px;text-align:right;flex-shrink:0;font-weight:600;}
+.chart-wrap{position:relative;height:220px;}
+.leg-row{display:flex;gap:16px;margin-bottom:12px;flex-wrap:wrap;}
+.leg-item{display:flex;align-items:center;gap:6px;font-size:13px;color:#718096;}
+.leg-dot{width:12px;height:12px;border-radius:3px;} .leg-line{width:20px;height:3px;border-radius:2px;}
+.tc{color:#0891b2!important;font-weight:600;} .ta{color:#0d9488!important;font-weight:600;}
+.tt{color:#2d3748!important;font-weight:700;} .hi-row td{background:#f0fdfa!important;}
+#loading{position:fixed;inset:0;background:rgba(255,255,255,.95);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:999;font-size:16px;color:#718096;}
+.spinner{width:40px;height:40px;border:3px solid #e2e8f0;border-top-color:#0d9488;border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(max-width:480px){
+  .kpi-val{font-size:28px;} .kpi-card{padding:18px 14px 14px;}
+  #content{padding:12px;} .card{padding:14px 16px;} .card-title{font-size:14px;}
+  table{font-size:13px;} .tab{font-size:13px;padding:8px 16px;}
+  .li-name{font-size:12px;} .chart-wrap{height:180px;}
+}
+@media(min-width:769px){
+  .kpi-grid{grid-template-columns:repeat(4,1fr);} .kpi-val{font-size:38px;}
+}
+</style>
+</head>
+<body>
+
+<div id="setup-screen">
+  <div class="setup-card">
+    <div class="setup-logo"><div class="setup-logo-text">NiM</div></div>
+    <div class="setup-title">ตั้งค่า Dashboard</div>
+    <div class="setup-desc">กรอก Google Sheets API Key เพื่อเชื่อมต่อข้อมูล<br>Key จะถูกบันทึกในเครื่องของคุณเท่านั้น</div>
+    <div id="setup-error" class="setup-error"></div>
+    <div class="setup-label">API Key</div>
+    <input class="setup-input" id="api-key-input" type="password" placeholder="AIzaSy...">
+    <div class="setup-btn" onclick="saveAndLoad()">เชื่อมต่อ →</div>
+  </div>
+</div>
+
+<div id="loading" style="display:none"><div class="spinner"></div><span>กำลังโหลดข้อมูล...</span></div>
+
+<div id="header" style="display:none">
+  <div class="hd-top">
+    <div class="logo-box"><div class="logo-text">NiM</div></div>
+    <div><div class="brand-name">NimExpress</div><div class="brand-sub">Logistics</div></div>
+    <button class="settings-btn" onclick="showSetup()" title="ตั้งค่า">⚙️</button>
+  </div>
+  <div class="date-row">
+    <div class="dot-green"></div>
+    <div class="chip" id="date-chip">—</div>
+    <div class="refresh-btn" onclick="loadData()">↻ รีเฟรช</div>
+  </div>
+  <div class="tabs">
+    <div class="tab active" onclick="showPage('overview',this)">∿ Overview</div>
+    <div class="tab" onclick="showPage('trend',this)">↗ Trend</div>
+  </div>
+</div>
+
+<div id="content" style="display:none">
+  <div id="page-overview" class="page active">
+    <div class="kpi-grid">
+      <div class="kpi-card blue"><div class="kpi-icon blue">📋</div><div class="kpi-label">จำนวนเคลมทั้งหมด</div><div class="kpi-val blue" id="k-total">—</div><div class="kpi-sub">รายการ</div></div>
+      <div class="kpi-card red"><div class="kpi-icon red">฿</div><div class="kpi-label">มูลค่าเคลมรวม</div><div class="kpi-val red" id="k-value">—</div><div class="kpi-sub">บาท</div></div>
+      <div class="kpi-card amber"><div class="kpi-icon amber">❄</div><div class="kpi-label">Cold Chain</div><div class="kpi-val amber" id="k-cold">—</div><div class="kpi-sub" id="k-cold-pct"></div></div>
+      <div class="kpi-card green"><div class="kpi-icon green">📦</div><div class="kpi-label">Normal</div><div class="kpi-val green" id="k-normal">—</div><div class="kpi-sub" id="k-normal-pct"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">ประเภทความเสียหาย</div>
+      <div class="tbl-wrap"><table><thead><tr><th>ประเภท</th><th>บิล</th><th>มูลค่า (฿)</th><th>สัดส่วน</th></tr></thead><tbody id="dmg-body"></tbody></table></div>
+    </div>
+    <div class="card">
+      <div class="card-title">ประเภทลูกค้า</div>
+      <div class="tbl-wrap"><table><thead><tr><th>ประเภท</th><th>บิล</th><th>มูลค่า (฿)</th><th>สัดส่วน</th></tr></thead><tbody id="cust-body"></tbody></table></div>
+    </div>
+    <div class="card">
+      <div class="card-title">บริษัท ผู้ส่ง Top 10 <span class="badge badge-cash">ลูกค้าเงินสด</span></div>
+      <div class="top10-list" id="top10-cash"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">บริษัท ผู้ส่ง Top 10 <span class="badge badge-credit">ลูกค้าเครดิต</span></div>
+      <div class="top10-list" id="top10-credit"></div>
+    </div>
+  </div>
+
+  <div id="page-trend" class="page">
+    <div class="kpi-grid">
+      <div class="kpi-card teal"><div class="kpi-icon teal">📦</div><div class="kpi-label">เดือนล่าสุด</div><div class="kpi-val teal" id="t-last-count">—</div><div class="kpi-sub" id="t-last-month"></div></div>
+      <div class="kpi-card cyan"><div class="kpi-icon cyan">฿</div><div class="kpi-label">มูลค่าเดือนล่าสุด</div><div class="kpi-val cyan" id="t-last-val">—</div><div class="kpi-sub">บาท</div></div>
+      <div class="kpi-card amber"><div class="kpi-icon amber">🔔</div><div class="kpi-label">เดือนที่เคสมากสุด</div><div class="kpi-val amber" id="t-max-month">—</div><div class="kpi-sub" id="t-max-count"></div></div>
+      <div class="kpi-card purple"><div class="kpi-icon purple">📈</div><div class="kpi-label">มูลค่าสูงสุด/เดือน</div><div class="kpi-val purple" id="t-max-val">—</div><div class="kpi-sub" id="t-max-val-month"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">จำนวนเคสรายเดือน</div>
+      <div class="leg-row">
+        <div class="leg-item"><div class="leg-dot" style="background:#99f6e4"></div>Normal</div>
+        <div class="leg-item"><div class="leg-dot" style="background:#2dd4bf"></div>Cold Chain</div>
+        <div class="leg-item"><div class="leg-line" style="background:#0369a1"></div>รวม</div>
+      </div>
+      <div class="chart-wrap"><canvas id="chart-trend-count"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">มูลค่าเคลมรายเดือน (บาท)</div>
+      <div class="leg-row">
+        <div class="leg-item"><div class="leg-dot" style="background:#a5f3fc"></div>Normal</div>
+        <div class="leg-item"><div class="leg-dot" style="background:#0891b2"></div>Cold Chain</div>
+      </div>
+      <div class="chart-wrap"><canvas id="chart-trend-val"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">ตารางสรุปรายเดือน</div>
+      <div class="tbl-wrap"><table><thead><tr><th>เดือน</th><th>รวม</th><th>Normal</th><th>Cold Chain</th><th>มูลค่า Normal (฿)</th><th>มูลค่า Cold (฿)</th><th>มูลค่ารวม (฿)</th></tr></thead><tbody id="trend-body"></tbody></table></div>
+    </div>
+  </div>
+</div>
+
+<script>
+var SHEET_ID='1_ipD42zmHkl-IQhbe5vnztNa1h8Lces6SgZufm8KtOM';
+var SHEET_NAME='Data';
+var COL={DATE:'วันที่เอกสาร',BILL_TYPE:'ประเภทบิล',CUSTOMER_TYPE:'ประเภทลูกค้า',CLAIM_VALUE:'ยืนยันมูลค่าเคลม (บาท)',DAMAGE_TYPE:'ประเภทความเสียหาย',SENDER:'บริษัท ผู้ส่ง',BILL_NO:'เลขที่บิล'};
+var charts={};var API_KEY='';
+
+window.onload=function(){
+  var saved=localStorage.getItem('nim_api_key');
+  if(saved){API_KEY=saved;startApp();}
+  else{document.getElementById('setup-screen').style.display='flex';}
+};
+
+function saveAndLoad(){
+  var k=document.getElementById('api-key-input').value.trim();
+  if(!k){showError('กรุณากรอก API Key');return;}
+  API_KEY=k;localStorage.setItem('nim_api_key',k);startApp();
+}
+function showSetup(){
+  document.getElementById('setup-screen').style.display='flex';
+  document.getElementById('api-key-input').value=API_KEY;
+}
+function showError(msg){var el=document.getElementById('setup-error');el.textContent=msg;el.style.display='block';}
+function startApp(){
+  document.getElementById('setup-screen').style.display='none';
+  document.getElementById('header').style.display='block';
+  document.getElementById('content').style.display='flex';
+  loadData();
+}
+function loadData(){
+  document.getElementById('loading').style.display='flex';
+  var url='https://sheets.googleapis.com/v4/spreadsheets/'+SHEET_ID+'/values/'+encodeURIComponent(SHEET_NAME)+'?key='+API_KEY;
+  fetch(url)
+    .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status+' — ตรวจสอบ API Key และ Sheet Public');return r.json();})
+    .then(function(d){var p=processData(d.values);render(p);document.getElementById('loading').style.display='none';})
+    .catch(function(e){document.getElementById('loading').style.display='none';showError(e.message);document.getElementById('setup-screen').style.display='flex';});
+}
+function processData(values){
+  if(!values||values.length<2)return null;
+  var headers=values[0];var rows=values.slice(1);var idx={};
+  headers.forEach(function(h,i){idx[h]=i;});
+  var records=rows.filter(function(r){return r[idx[COL.BILL_NO]]&&String(r[idx[COL.BILL_NO]]).trim()!=='';});
+  var totalClaims=records.length,totalValue=0,coldChain=0,normal=0;
+  var byDamage={},byCustomer={},bySenderCash={},bySenderCredit={},byMonth={};
+  records.forEach(function(r){
+    var val=parseFloat(r[idx[COL.CLAIM_VALUE]])||0;
+    var type=String(r[idx[COL.BILL_TYPE]]||'').trim();
+    var cust=String(r[idx[COL.CUSTOMER_TYPE]]||'').trim();
+    var dmg=String(r[idx[COL.DAMAGE_TYPE]]||'ไม่ระบุ').trim();
+    var sender=String(r[idx[COL.SENDER]]||'ไม่ระบุ').trim();
+    var dateRaw=r[idx[COL.DATE]]||'';
+    totalValue+=val;
+    var isCold=type.toLowerCase().indexOf('cold')!==-1||type.indexOf('ควบคุมอุณหภูมิ')!==-1;
+    if(isCold){coldChain++;}else{normal++;}
+    if(!byDamage[dmg])byDamage[dmg]={count:0,value:0};byDamage[dmg].count++;byDamage[dmg].value+=val;
+    var custKey=cust||'ไม่ระบุ';
+    if(!byCustomer[custKey])byCustomer[custKey]={count:0,value:0};byCustomer[custKey].count++;byCustomer[custKey].value+=val;
+    var isCash=cust.indexOf('เงินสด')!==-1||cust.toLowerCase().indexOf('cash')!==-1;
+    if(isCash){if(!bySenderCash[sender])bySenderCash[sender]=0;bySenderCash[sender]++;}
+    else{if(!bySenderCredit[sender])bySenderCredit[sender]=0;bySenderCredit[sender]++;}
+    var monthKey='';var d=new Date(dateRaw);
+    if(!isNaN(d.getTime())){var y=d.getFullYear();var m=d.getMonth()+1;monthKey=y+'-'+(m<10?'0':'')+m;}
+    else if(typeof dateRaw==='string'&&dateRaw.length>=7){monthKey=dateRaw.substring(0,7);}
+    if(monthKey){
+      if(!byMonth[monthKey])byMonth[monthKey]={count:0,value:0,cold:0,normal:0,valueCold:0,valueNormal:0};
+      byMonth[monthKey].count++;byMonth[monthKey].value+=val;
+      if(isCold){byMonth[monthKey].cold++;byMonth[monthKey].valueCold+=val;}
+      else{byMonth[monthKey].normal++;byMonth[monthKey].valueNormal+=val;}
+    }
+  });
+  function top10(obj){return Object.keys(obj).sort(function(a,b){return obj[b]-obj[a];}).slice(0,10).map(function(k){return{name:k,count:obj[k]};});}
+  var monthSorted=Object.keys(byMonth).sort();
+  var lastMonth=monthSorted[monthSorted.length-1];
+  var maxMonth=monthSorted.length?monthSorted.reduce(function(mx,k){return byMonth[k].count>byMonth[mx].count?k:mx;},monthSorted[0]):'';
+  var maxMonthVal=monthSorted.length?monthSorted.reduce(function(mx,k){return byMonth[k].value>byMonth[mx].value?k:mx;},monthSorted[0]):'';
+  return{summary:{totalClaims:totalClaims,totalValue:totalValue,coldChain:coldChain,normal:normal},
+    byDamage:byDamage,byCustomer:byCustomer,top10Cash:top10(bySenderCash),top10Credit:top10(bySenderCredit),
+    trend:{keys:monthSorted,data:monthSorted.map(function(k){return byMonth[k];}),
+      lastMonth:lastMonth,lastData:byMonth[lastMonth]||{},maxMonth:maxMonth,maxData:byMonth[maxMonth]||{},
+      maxMonthVal:maxMonthVal,maxValData:byMonth[maxMonthVal]||{}}};
+}
+function render(d){
+  if(!d){alert('ไม่มีข้อมูล');return;}
+  document.getElementById('date-chip').textContent=new Date().toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'numeric'});
+  var s=d.summary;
+  set('k-total',fmt(s.totalClaims));set('k-value',fmtB(s.totalValue));
+  set('k-cold',fmt(s.coldChain));set('k-normal',fmt(s.normal));
+  var pct=s.totalClaims?((s.coldChain/s.totalClaims)*100).toFixed(1):0;
+  set('k-cold-pct',pct+'% ของทั้งหมด');set('k-normal-pct',(100-pct).toFixed(1)+'% ของทั้งหมด');
+  renderTbl('dmg-body',d.byDamage);renderTbl('cust-body',d.byCustomer);
+  renderTop10('top10-cash',d.top10Cash,'#eab308');renderTop10('top10-credit',d.top10Credit,'#3b82f6');
+  var tr=d.trend;
+  set('t-last-count',fmt(tr.lastData.count||0));set('t-last-month',fmtMonth(tr.lastMonth));
+  set('t-last-val',fmtB(tr.lastData.value||0));set('t-max-month',fmtMonth(tr.maxMonth));
+  set('t-max-count',fmt(tr.maxData.count||0)+' เคส');set('t-max-val',fmtB(tr.maxValData.value||0));
+  set('t-max-val-month','บาท ('+fmtMonth(tr.maxMonthVal)+')');
+  buildCountChart(tr);buildValChart(tr);renderTrendTable(tr);
+}
+function renderTbl(id,obj){
+  var sorted=Object.keys(obj).sort(function(a,b){return obj[b].count-obj[a].count;});
+  var maxC=sorted.length?obj[sorted[0]].count:1;var html='';
+  sorted.forEach(function(k){var r=obj[k];var w=Math.round((r.count/maxC)*100);
+    html+='<tr><td>'+esc(k)+'</td><td><span class="bill-num">'+fmt(r.count)+'</span></td><td><span class="baht-num">'+fmtB(r.value)+'</span></td><td><div class="bar-wrap"><div class="mini-bar-bg"><div class="mini-bar" style="width:'+w+'%"></div></div></div></td></tr>';
+  });
+  document.getElementById(id).innerHTML=html||'<tr><td colspan="4" style="text-align:center;color:#a0aec0;padding:16px">ไม่มีข้อมูล</td></tr>';
+}
+function renderTop10(id,list,color){
+  var maxC=list.length?list[0].count:1;var html='';
+  list.forEach(function(item,i){var w=Math.round((item.count/maxC)*100);var rc=i===0?'r1':i===1?'r2':i===2?'r3':'';
+    html+='<div class="li"><div class="li-rank '+rc+'">'+(i+1)+'</div><div class="li-name">'+esc(item.name)+'</div><div class="li-bar-bg"><div class="li-bar" style="width:'+w+'%;background:'+color+'"></div></div><div class="li-val">'+item.count+'</div></div>';
+  });
+  document.getElementById(id).innerHTML=html||'<div style="text-align:center;color:#a0aec0;padding:16px">ไม่มีข้อมูล</div>';
+}
+function buildCountChart(tr){
+  var labels=tr.keys.map(fmtMonth);
+  var normal=tr.data.map(function(d){return d.normal||0;});
+  var cold=tr.data.map(function(d){return d.cold||0;});
+  var total=tr.data.map(function(d){return d.count||0;});
+  if(charts['count'])charts['count'].destroy();
+  charts['count']=new Chart(document.getElementById('chart-trend-count'),{type:'bar',data:{labels:labels,datasets:[
+    {label:'Cold Chain',data:cold,backgroundColor:'#2dd4bf',stack:'a',borderRadius:0},
+    {label:'Normal',data:normal,backgroundColor:'#99f6e4',stack:'a',borderRadius:{topLeft:4,topRight:4}},
+    {label:'รวม',data:total,type:'line',borderColor:'#0369a1',backgroundColor:'transparent',borderWidth:2.5,pointBackgroundColor:'#0369a1',pointRadius:4,tension:0.3,order:0}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true,ticks:{precision:0}}}}});
+}
+function buildValChart(tr){
+  var labels=tr.keys.map(fmtMonth);
+  var normal=tr.data.map(function(d){return Math.round(d.valueNormal||0);});
+  var cold=tr.data.map(function(d){return Math.round(d.valueCold||0);});
+  if(charts['val'])charts['val'].destroy();
+  charts['val']=new Chart(document.getElementById('chart-trend-val'),{type:'bar',data:{labels:labels,datasets:[
+    {label:'Cold Chain',data:cold,backgroundColor:'#0891b2',stack:'a',borderRadius:0},
+    {label:'Normal',data:normal,backgroundColor:'#a5f3fc',stack:'a',borderRadius:{topLeft:4,topRight:4}}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true}}}});
+}
+function renderTrendTable(tr){
+  var maxVal=tr.data.reduce(function(mx,d){return Math.max(mx,d.value||0);},0);var html='';
+  tr.keys.forEach(function(k,i){var d=tr.data[i];var isMax=(d.value||0)===maxVal;
+    html+='<tr class="'+(isMax?'hi-row':'')+'"><td>'+fmtMonth(k)+'</td><td>'+fmt(d.count||0)+'</td><td class="tc">'+fmt(d.normal||0)+'</td><td class="ta">'+fmt(d.cold||0)+'</td><td class="tc">'+fmtB(d.valueNormal||0)+'</td><td class="ta">'+fmtB(d.valueCold||0)+'</td><td class="tt">'+fmtB(d.value||0)+'</td></tr>';
+  });
+  document.getElementById('trend-body').innerHTML=html||'<tr><td colspan="7" style="text-align:center;color:#a0aec0;padding:16px">ไม่มีข้อมูล</td></tr>';
+}
+function showPage(id,el){
+  document.querySelectorAll('.page').forEach(function(p){p.classList.remove('active');});
+  document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});
+  document.getElementById('page-'+id).classList.add('active');el.classList.add('active');
+}
+function fmtMonth(k){if(!k)return'—';var p=k.split('-');var m=['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];return m[parseInt(p[1])||0]+' '+(parseInt(p[0])-2500+2567);}
+function fmt(n){return Number(n).toLocaleString('th-TH');}
+function fmtB(n){return Number(n).toLocaleString('th-TH',{minimumFractionDigits:0,maximumFractionDigits:0});}
+function esc(s){return String(s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function set(id,v){var el=document.getElementById(id);if(el)el.textContent=v;}
+</script>
+</body>
+</html>
