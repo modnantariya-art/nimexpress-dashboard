@@ -230,37 +230,75 @@ function processData(values){
   var records=rows.filter(function(r){return r[idx[COL.BILL_NO]]&&String(r[idx[COL.BILL_NO]]).trim()!=='';});
   var totalClaims=records.length,totalValue=0,coldChain=0,normal=0;
   var byDamage={},byCustomer={},bySenderCash={},bySenderCredit={},byMonth={};
+
   records.forEach(function(r){
     var val=parseFloat(r[idx[COL.CLAIM_VALUE]])||0;
     var type=String(r[idx[COL.BILL_TYPE]]||'').trim();
     var cust=String(r[idx[COL.CUSTOMER_TYPE]]||'').trim();
     var dmg=String(r[idx[COL.DAMAGE_TYPE]]||'ไม่ระบุ').trim();
     var sender=String(r[idx[COL.SENDER]]||'ไม่ระบุ').trim();
-    var dateRaw=r[idx[COL.DATE]]||'';
+    var dateRaw=r[idx[COL.DATE]];
+
     totalValue+=val;
     var isCold=type.toLowerCase().indexOf('cold')!==-1||type.indexOf('ควบคุมอุณหภูมิ')!==-1;
     if(isCold){coldChain++;}else{normal++;}
-    if(!byDamage[dmg])byDamage[dmg]={count:0,value:0};byDamage[dmg].count++;byDamage[dmg].value+=val;
+
+    if(!byDamage[dmg])byDamage[dmg]={count:0,value:0};
+    byDamage[dmg].count++;byDamage[dmg].value+=val;
+
     var custKey=cust||'ไม่ระบุ';
-    if(!byCustomer[custKey])byCustomer[custKey]={count:0,value:0};byCustomer[custKey].count++;byCustomer[custKey].value+=val;
+    if(!byCustomer[custKey])byCustomer[custKey]={count:0,value:0};
+    byCustomer[custKey].count++;byCustomer[custKey].value+=val;
+
     var isCash=cust.indexOf('เงินสด')!==-1||cust.toLowerCase().indexOf('cash')!==-1;
     if(isCash){if(!bySenderCash[sender])bySenderCash[sender]=0;bySenderCash[sender]++;}
     else{if(!bySenderCredit[sender])bySenderCredit[sender]=0;bySenderCredit[sender]++;}
-  var monthKey='';
-if(typeof dateRaw==='number'&&dateRaw>1000){
-  // Excel serial date — แปลงเป็น JS Date
-  var excelDate=new Date((dateRaw-25569)*86400*1000);
-  var y=excelDate.getUTCFullYear();var m=excelDate.getUTCMonth()+1;
-  monthKey=y+'-'+(m<10?'0':'')+m;
-} else {
-  var d=new Date(dateRaw);
-  if(!isNaN(d.getTime())&&d.getFullYear()>1970){
-    var y=d.getFullYear();var m=d.getMonth()+1;
-    monthKey=y+'-'+(m<10?'0':'')+m;
-  } else if(typeof dateRaw==='string'&&dateRaw.length>=7){
-    monthKey=dateRaw.substring(0,7);
-  }
-}
+
+    // ── parse วันที่ ──
+    var monthKey='';
+    var dateStr=String(dateRaw||'').trim();
+
+    // กรณี string มี / เช่น "1/3/2567" หรือ "03/01/2024"
+    if(dateStr.indexOf('/')!==-1){
+      var parts=dateStr.split('/');
+      if(parts.length===3){
+        var p0=parseInt(parts[0]),p1=parseInt(parts[1]),p2=parseInt(parts[2]);
+        var yr=p2,mo=p1;
+        // ถ้าปีเป็น พ.ศ. (มากกว่า 2400) แปลงเป็น ค.ศ.
+        if(yr>2400)yr=yr-543;
+        if(yr>1970&&mo>=1&&mo<=12){
+          monthKey=yr+'-'+(mo<10?'0':'')+mo;
+        }
+      }
+    }
+    // กรณี string มี - เช่น "2024-03-01"
+    else if(dateStr.indexOf('-')!==-1){
+      var parts=dateStr.split('-');
+      if(parts.length===3){
+        var yr=parseInt(parts[0]),mo=parseInt(parts[1]);
+        if(yr>2400)yr=yr-543;
+        if(yr>1970&&mo>=1&&mo<=12){
+          monthKey=yr+'-'+(mo<10?'0':'')+mo;
+        }
+      }
+    }
+    // กรณีเป็นตัวเลข Excel serial
+    else if(!isNaN(parseFloat(dateStr))&&parseFloat(dateStr)>10000){
+      var serial=parseFloat(dateStr);
+      var excelDate=new Date((serial-25569)*86400*1000);
+      var yr=excelDate.getUTCFullYear();var mo=excelDate.getUTCMonth()+1;
+      if(yr>2400)yr=yr-543;
+      if(yr>1970)monthKey=yr+'-'+(mo<10?'0':'')+mo;
+    }
+    // กรณี JS Date object string
+    else{
+      var d=new Date(dateStr);
+      if(!isNaN(d.getTime())&&d.getFullYear()>1970){
+        var yr=d.getFullYear();var mo=d.getMonth()+1;
+        monthKey=yr+'-'+(mo<10?'0':'')+mo;
+      }
+    }
+
     if(monthKey){
       if(!byMonth[monthKey])byMonth[monthKey]={count:0,value:0,cold:0,normal:0,valueCold:0,valueNormal:0};
       byMonth[monthKey].count++;byMonth[monthKey].value+=val;
@@ -268,16 +306,19 @@ if(typeof dateRaw==='number'&&dateRaw>1000){
       else{byMonth[monthKey].normal++;byMonth[monthKey].valueNormal+=val;}
     }
   });
+
   function top10(obj){return Object.keys(obj).sort(function(a,b){return obj[b]-obj[a];}).slice(0,10).map(function(k){return{name:k,count:obj[k]};});}
   var monthSorted=Object.keys(byMonth).sort();
   var lastMonth=monthSorted[monthSorted.length-1];
   var maxMonth=monthSorted.length?monthSorted.reduce(function(mx,k){return byMonth[k].count>byMonth[mx].count?k:mx;},monthSorted[0]):'';
   var maxMonthVal=monthSorted.length?monthSorted.reduce(function(mx,k){return byMonth[k].value>byMonth[mx].value?k:mx;},monthSorted[0]):'';
-  return{summary:{totalClaims:totalClaims,totalValue:totalValue,coldChain:coldChain,normal:normal},
+  return{
+    summary:{totalClaims:totalClaims,totalValue:totalValue,coldChain:coldChain,normal:normal},
     byDamage:byDamage,byCustomer:byCustomer,top10Cash:top10(bySenderCash),top10Credit:top10(bySenderCredit),
     trend:{keys:monthSorted,data:monthSorted.map(function(k){return byMonth[k];}),
       lastMonth:lastMonth,lastData:byMonth[lastMonth]||{},maxMonth:maxMonth,maxData:byMonth[maxMonth]||{},
-      maxMonthVal:maxMonthVal,maxValData:byMonth[maxMonthVal]||{}}};
+      maxMonthVal:maxMonthVal,maxValData:byMonth[maxMonthVal]||{}}
+  };
 }
 function render(d){
   if(!d){alert('ไม่มีข้อมูล');return;}
