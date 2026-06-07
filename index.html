@@ -193,12 +193,10 @@ tr:hover td{background:#f8fffe;}
 var SHEET_ID='1_ipD42zmHkl-IQhbe5vnztNa1h8Lces6SgZufm8KtOM';
 var SHEET_NAME='Data';
 var COL={DATE:'วันที่เอกสาร',BILL_TYPE:'ประเภทบิล',CUSTOMER_TYPE:'ประเภทลูกค้า',CLAIM_VALUE:'ยืนยันมูลค่าเคลม (บาท)',DAMAGE_TYPE:'ประเภทความเสียหาย',SENDER:'บริษัท ผู้ส่ง',BILL_NO:'เลขที่บิล'};
-var charts={};var API_KEY='';
+var charts={};var API_KEY='AIzaSyC4fRKQ92BWM13MvkL0kRX3aW-kja-yw_c';
 
 window.onload=function(){
-  var saved=localStorage.getItem('nim_api_key');
-  if(saved){API_KEY=saved;startApp();}
-  else{document.getElementById('setup-screen').style.display='flex';}
+  startApp();
 };
 
 function saveAndLoad(){
