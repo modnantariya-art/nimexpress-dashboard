@@ -147,6 +147,8 @@ select:disabled{opacity:.5}
 .modal .mh{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:12px}
 .modal .x{min-width:44px;min-height:44px;border-radius:22px;border:1px solid var(--line);background:#fff;font-size:20px;cursor:pointer}
 
+td.clickcell{cursor:pointer;vertical-align:top}td.clickcell:hover{background:var(--blue-l)}
+
 </style>
 </head>
 <body>
@@ -212,7 +214,7 @@ var PENDING = { B00: 1, B01: 1, B02: 1, B03: 1 };
 var S = {
   rows: [], revenue: {}, updated: '', years: [], maxDate: '',
   page: 'overview',
-  overview: { year: 0, month: 'all' },
+  overview: { year: 0, month: 'all', bill: 'all', split: false },
   claim: { year: 'all', month: 'all', bill: 'all', cust: 'all', damage: 'all', grpBill: 'all' },
   assess: { year: 'all', month: 'all', scope: 'all', region: 'all' },
   customer: { q: '', selected: [], picked: false, year: 'all', status: 'all', pageNo: 0, years: null, topYear: 'all', crSort: 'rate' },
@@ -259,6 +261,15 @@ function canonSender(raw) {
 function creditKey(name) {
   return norm(name).replace(/^(บริษัท|ห้างหุ้นส่วนจำกัด)\s*/, '').replace(/\s*จำกัด(\s*\(มหาชน\))?$/, '').replace(/[\s.\-,()'"’]/g, '').toLowerCase();
 }
+// กลุ่มประเภทเคลม: เสียหาย / สูญหาย (รวมบางส่วน + ทั้งหมด) / อุบัติเหตุ
+var DMG_GROUPS = ['เสียหาย', 'สูญหาย', 'อุบัติเหตุ'];
+function dmgGroup(d) {
+  if (/สูญหาย/.test(d)) return 'สูญหาย';
+  if (/อุบัติเหตุ/.test(d)) return 'อุบัติเหตุ';
+  if (/เสียหาย/.test(d)) return 'เสียหาย';
+  return 'ไม่ระบุ';
+}
+var BILL_LABEL = { 'Normal': 'AB (Normal)', 'Cold Chain': 'CC (Cold Chain)' };
 function stripCode(s) { return norm(s).replace(/^\d+\s+/, ''); }
 function code(s) { var m = norm(s).match(/^([A-Za-z]*\d+)/); return m ? m[1] : ''; }
 function sum(rows, k) { var t = 0; for (var i = 0; i < rows.length; i++) t += rows[i][k]; return t; }
@@ -337,6 +348,8 @@ function prepare(payload) {
     r.pending = !!PENDING[r.clearCode];
     r.charged = r.shEmp + r.shSub + r.shDp;
     r.assessed = !!r.resp;
+    if (/บิลส่งไม่ได้/.test(r.damage)) return; // ไม่ใช่เคสเคลม (ติดมากับรายงาน)
+    r.dmgGroup = dmgGroup(r.damage);
     out.push(r);
   });
   // ลูกค้าเครดิต: ยอดขายรายเดือน + หาเจ้าของบิลเครดิต (กรณีส่งกลับผู้ส่ง)
@@ -434,6 +447,7 @@ function lineChart(series, opt) {
     h += '<text x="' + (L - 8) + '" y="' + (y(gv) + 4) + '" font-size="11" fill="#5f5e5a" text-anchor="end">' + esc(yf(gv)) + '</text>';
   }
   MONTHS.forEach(function (m, i) { h += '<text x="' + x(i) + '" y="' + (H - 10) + '" font-size="11" fill="#5f5e5a" text-anchor="middle">' + m + '</text>'; });
+  var usedY = [];
   series.forEach(function (s) {
     var segs = [], cur = [];
     s.data.forEach(function (v, i) { if (v == null) { if (cur.length) segs.push(cur); cur = []; } else cur.push(x(i) + ',' + y(v)); });
@@ -444,7 +458,10 @@ function lineChart(series, opt) {
       if (v == null) return; last = i;
       h += '<circle ' + (opt.pointAttr ? opt.pointAttr(i) + ' ' : '') + 'cx="' + x(i) + '" cy="' + y(v) + '" r="' + (opt.pointAttr ? 6 : 4) + '" fill="' + s.color + '" stroke="#fcfcfb" stroke-width="2"><title>' + esc(MONTHS[i] + ' ' + s.name + ' · ' + (opt.tipFmt || yf)(v)) + '</title></circle>';
     });
-    if (last >= 0) h += '<text x="' + (x(last) + 7) + '" y="' + (y(s.data[last]) + 4) + '" font-size="11" font-weight="600" fill="#2b2a28">' + esc(s.name) + '</text>';
+    var ly = y(s.data[last >= 0 ? last : 0]) + 4;
+    usedY.forEach(function (u) { if (Math.abs(u - ly) < 13) ly = u + (ly >= u ? 13 : -13); });
+    usedY.push(ly);
+    if (last >= 0) h += '<text x="' + (x(last) + 7) + '" y="' + ly + '" font-size="11" font-weight="600" fill="#2b2a28">' + esc(s.name) + '</text>';
   });
   return h + '</svg>';
 }
@@ -456,12 +473,28 @@ function hbars(list, opt) {
   return '<div style="display:flex;flex-direction:column;gap:11px">' + list.map(function (r) {
     var col = typeof opt.color === 'function' ? opt.color(r) : (opt.color || C.blue);
     var label = opt.link ? '<button class="linkish" data-go="' + opt.link + '" data-val="' + esc(r.key) + '">' + esc(r.key) + '</button>' : '<span>' + esc(r.label || r.key) + '</span>';
-    var tag = opt.drill ? 'button' : 'div';
-    var attrs = opt.drill ? ' type="button" data-drill-field="' + opt.drill + '" data-val="' + esc(r.key) + '"' : '';
-    return '<' + tag + ' class="hb' + (opt.noValue ? ' n3' : '') + (opt.drill ? ' drill' : '') + '"' + attrs + ' title="' + esc((r.label || r.key) + ' · ' + fmt(r.n) + ' เคส · ' + fmt(r.v) + ' บาท' + (opt.drill ? ' · กดเพื่อดูรายการบิล' : '')) + '">' + label +
+    var df = r.drill || opt.drill;
+    var tag = df ? 'button' : 'div';
+    var attrs = df ? ' type="button" data-drill-field="' + df + '" data-val="' + esc(r.key) + '"' : '';
+    if (r.isSub) label = '<span style="padding-left:18px;color:#5f5e5a">└ ' + esc(r.label || r.key) + '</span>';
+    if (r.isHead) label = '<span style="font-weight:600">' + esc(r.label || r.key) + '</span>';
+    return '<' + tag + ' class="hb' + (opt.noValue ? ' n3' : '') + (df ? ' drill' : '') + '"' + attrs + ' title="' + esc((r.label || r.key) + ' · ' + fmt(r.n) + ' เคส · ' + fmt(r.v) + ' บาท' + (df ? ' · กดเพื่อดูรายการบิล' : '')) + '">' + label +
       '<div class="track"><div class="fill" style="width:' + (r.n / max * 100) + '%;background:' + col + '"></div></div>' +
       '<span class="num">' + fmt(r.n) + '</span>' + (opt.noValue ? '' : '<span class="num mut">' + fmt(r.v) + '</span>') + '</' + tag + '>';
   }).join('') + '</div>';
+}
+
+// แถบประเภทเคลม 3 กลุ่ม + ประเภทย่อย
+function dmgBars(rows) {
+  var list = [];
+  DMG_GROUPS.concat(['ไม่ระบุ']).forEach(function (gname) {
+    var gr = rows.filter(function (r) { return r.dmgGroup === gname; });
+    if (!gr.length) return;
+    var g = groupBy(gr, function () { return gname; })[0]; g.isHead = true; g.drill = 'dmgGroup'; list.push(g);
+    var subs = groupBy(gr, function (r) { return r.damage; }).sort(byN);
+    if (subs.length > 1) subs.forEach(function (x) { x.isSub = true; x.drill = 'damage'; list.push(x); });
+  });
+  return hbars(list, { color: function (r) { return r.isSub ? C.blueL : r.key === 'อุบัติเหตุ' ? C.violet : r.key === 'สูญหาย' ? C.orange : C.blue; } });
 }
 
 function shareStack(comp, emp, sub, dp) {
@@ -502,7 +535,7 @@ var DRILL = {
   comp: { t: 'เคสที่บริษัทรับภาระ', f: function (r) { return r.shComp > 0; } },
   charged: { t: 'เคสที่มียอดเรียกเก็บ', f: function (r) { return r.charged > 0; } }
 };
-var FIELD_LABEL = { decision: 'ผลพิจารณา', claimSt: 'สถานะเคลม', clearSt: 'สถานะเคลียร์', damage: 'ประเภทความเสียหาย', group: 'กลุ่มสินค้า', noClaim: 'สาเหตุไม่เคลม', resp: 'ผู้รับผิดชอบ', spot: 'จุดที่เกิดเหตุ', region: 'ภาค', section: 'ส่วนงาน', dest: 'DC ปลายทาง' };
+var FIELD_LABEL = { dmgGroup: 'ประเภทเคลม', billType: 'ประเภทบิล', decision: 'ผลพิจารณา', claimSt: 'สถานะเคลม', clearSt: 'สถานะเคลียร์', damage: 'ประเภทความเสียหาย', group: 'กลุ่มสินค้า', noClaim: 'สาเหตุไม่เคลม', resp: 'ผู้รับผิดชอบ', spot: 'จุดที่เกิดเหตุ', region: 'ภาค', section: 'ส่วนงาน', dest: 'DC ปลายทาง' };
 
 // ===== ช่วงเวลา (ปี + เดือน) =====
 function inPeriod(st) {
@@ -564,8 +597,8 @@ function statusTag(r) {
 }
 
 function downloadCSV(rows, name) {
-  var head = ['วันที่เอกสาร', 'เลขที่บิล', 'ประเภทความเสียหาย', 'ประเภทบิล', 'ประเภทลูกค้า', 'ลูกค้า', 'ผู้ส่งตามระบบ', 'ผู้รับ', 'ส่งกลับผู้ส่ง', 'กลุ่มสินค้า', 'จุดลง', 'ผลพิจารณา', 'สาเหตุไม่เคลม', 'มูลค่ายื่นเคลม', 'ยืนยันมูลค่าเคลม', 'จุดที่เกิดเหตุ', 'หน่วยงานที่ทำให้เกิดเหตุ', 'ภาค', 'ส่วนงาน', 'ผู้รับผิดชอบ', 'บริษัท(บาท)', 'พนักงาน(บาท)', 'รถร่วม(บาท)', 'DP(บาท)', 'สถานะเคลม', 'สถานะเคลียร์'];
-  var keys = ['date', 'bill', 'damage', 'billType', 'custType', 'sender', 'senderRaw', 'receiver', 'returnedTxt', 'group', 'dest', 'decision', 'noClaim', 'req', 'conf', 'spot', 'unit', 'region', 'section', 'resp', 'shComp', 'shEmp', 'shSub', 'shDp', 'claimSt', 'clearSt'];
+  var head = ['วันที่เอกสาร', 'เลขที่บิล', 'ประเภทเคลม', 'ประเภทความเสียหาย', 'ประเภทบิล', 'ประเภทลูกค้า', 'ลูกค้า', 'ผู้ส่งตามระบบ', 'ผู้รับ', 'ส่งกลับผู้ส่ง', 'กลุ่มสินค้า', 'จุดลง', 'ผลพิจารณา', 'สาเหตุไม่เคลม', 'มูลค่ายื่นเคลม', 'ยืนยันมูลค่าเคลม', 'จุดที่เกิดเหตุ', 'หน่วยงานที่ทำให้เกิดเหตุ', 'ภาค', 'ส่วนงาน', 'ผู้รับผิดชอบ', 'บริษัท(บาท)', 'พนักงาน(บาท)', 'รถร่วม(บาท)', 'DP(บาท)', 'สถานะเคลม', 'สถานะเคลียร์'];
+  var keys = ['date', 'bill', 'dmgGroup', 'damage', 'billType', 'custType', 'sender', 'senderRaw', 'receiver', 'returnedTxt', 'group', 'dest', 'decision', 'noClaim', 'req', 'conf', 'spot', 'unit', 'region', 'section', 'resp', 'shComp', 'shEmp', 'shSub', 'shDp', 'claimSt', 'clearSt'];
   var q = function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
   var lines = [head.join(',')].concat(rows.map(function (r) { return keys.map(function (k) { return q(k === 'bill' ? '\t' + r[k] : k === 'returnedTxt' ? (r.returned ? 'ใช่' : '') : r[k]); }).join(','); }));
   var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
@@ -685,19 +718,17 @@ function creditSection(base, f) {
 function renderClaim() {
   var f = S.claim;
   var rows = S.rows.filter(function (r) {
-    return (f.bill === 'all' || r.billType === f.bill) && (f.cust === 'all' || r.custType === f.cust) && (f.damage === 'all' || r.damage === f.damage);
+    return (f.bill === 'all' || r.billType === f.bill) && (f.cust === 'all' || r.custType === f.cust) && (f.damage === 'all' || r.dmgGroup === f.damage);
   }).filter(inPeriod(f));
   S.ctx = rows;
   var n = rows.length, req = sum(rows, 'req'), conf = sum(rows, 'conf');
   var claimed = rows.filter(DRILL.claimed.f), noClaim = rows.filter(DRILL.noClaim.f), pendClaim = rows.filter(DRILL.pendClaim.f), over = rows.filter(DRILL.over.f);
-  var dmgOpts = groupBy(S.rows, function (r) { return r.damage; }).sort(byN);
 
   var h = '<section class="filters" aria-label="ตัวกรอง">' +
     '<div class="fg"><span class="fl">ปี</span>' + yearChips('claim.year', f.year) + '</div>' + monthSelect('claim.month', f) +
-    '<div class="fg"><span class="fl">ประเภทบิล</span>' + chips('claim.bill', [['all', 'ทั้งหมด'], 'Cold Chain', 'Normal'], f.bill) + '</div>' +
+    '<div class="fg"><span class="fl">ประเภทบิล</span>' + chips('claim.bill', [['all', 'ทั้งหมด'], ['Normal', 'AB (Normal)'], ['Cold Chain', 'CC (Cold Chain)']], f.bill) + '</div>' +
     '<div class="fg"><span class="fl">ลูกค้า</span>' + chips('claim.cust', [['all', 'ทั้งหมด'], 'เงินสด', 'เครดิต'], f.cust) + '</div>' +
-    '<label class="fg"><span class="fl">ประเภทความเสียหาย</span><select data-set="claim.damage"><option value="all">ทั้งหมด</option>' +
-    dmgOpts.map(function (g) { return '<option' + (g.key === f.damage ? ' selected' : '') + '>' + esc(g.key) + '</option>'; }).join('') + '</select></label></section>';
+    '<div class="fg"><span class="fl">ประเภทเคลม</span>' + chips('claim.damage', [['all', 'ทั้งหมด']].concat(DMG_GROUPS), f.damage) + '</div></section>';
 
   h += '<section class="kpis">' +
     kpi('เคสแจ้งเคลม', fmt(n), periodLabel(f) + ' · ยื่น ' + mil(req) + ' ล้านบาท', '', 'data-drill="all"') +
@@ -717,7 +748,6 @@ function renderClaim() {
     }).join('') + '</div></div></section>';
 
   // ประเภทความเสียหาย + สัดส่วน
-  var dmg = groupBy(rows, function (r) { return r.damage; }).sort(byN);
   function splitBar(key, a, b) {
     var ra = rows.filter(function (r) { return r[key] === a; }), rb = rows.filter(function (r) { return r[key] === b; });
     var t = ra.length + rb.length || 1;
@@ -725,7 +755,7 @@ function renderClaim() {
       '<div class="stack"><div style="width:' + (ra.length / t * 100) + '%;background:' + C.blue + ';color:#fcfcfb">' + a + ' ' + fmt(ra.length) + ' (' + pct(ra.length, t, 0) + ')</div><div style="width:' + (rb.length / t * 100) + '%;background:' + C.orange + '">' + b + ' ' + fmt(rb.length) + '</div></div>' +
       '<div style="display:flex;justify-content:space-between;font-size:12px;margin-top:6px" class="mut"><span>มูลค่า ' + mil(sum(ra, 'conf')) + ' ล้าน · เฉลี่ย ' + fmt(ra.length ? sum(ra, 'conf') / ra.length : 0) + ' บาท/เคส</span><span>มูลค่า ' + mil(sum(rb, 'conf')) + ' ล้าน · เฉลี่ย ' + fmt(rb.length ? sum(rb, 'conf') / rb.length : 0) + ' บาท/เคส</span></div></div>';
   }
-  h += '<section class="grid g2"><div class="card"><h2 class="ct">ประเภทความเสียหาย</h2><p class="cs">จำนวนเคส · มูลค่ายืนยัน (บาท) · กดแถวเพื่อดูรายการบิล</p>' + hbars(dmg, { drill: 'damage' }) + '</div>' +
+  h += '<section class="grid g2"><div class="card"><h2 class="ct">ประเภทเคลม</h2><p class="cs">เสียหาย / สูญหาย (รวมบางส่วนและทั้งหมด) / อุบัติเหตุ · กดแถวเพื่อดูรายการบิล</p>' + dmgBars(rows) + '</div>' +
     '<div class="card"><h2 class="ct">สัดส่วนตามประเภทลูกค้า / ประเภทบิล</h2><p class="cs">จำนวนเคส · มูลค่ายืนยัน</p><div style="display:flex;flex-direction:column;gap:18px">' +
     splitBar('custType', 'เงินสด', 'เครดิต') + splitBar('billType', 'Cold Chain', 'Normal') + '</div></div></section>';
 
@@ -840,12 +870,15 @@ function renderOverview() {
   if (st.month !== 'all') months = [+st.month];
   else for (var i = 1; i <= 12; i++) if (y !== maxY || i <= maxM) months.push(i);
   var inM = function (yy) { return function (r) { return r.y === yy && months.indexOf(r.m) >= 0; }; };
-  var cur = S.rows.filter(inM(y)), prev = S.rows.filter(inM(y - 1));
-  S.ctx = cur;
+  var bill = st.bill || 'all';
+  var byBill = function (r) { return bill === 'all' || r.billType === bill; };
+  var curAll = S.rows.filter(inM(y)), prevAll = S.rows.filter(inM(y - 1));
+  var cur = curAll.filter(byBill), prev = prevAll.filter(byBill);
+  S.ctx = cur; S.ctxAll = curAll;
   var hasPrev = S.years.indexOf(y - 1) >= 0 && prev.length > 0;
-  function rate(yy, rows) {
+  function rate(yy, rows, b) {
     var c = 0, r = 0;
-    months.forEach(function (m) { var rv = revOf(yy, m - 1, 'all'); if (rv) { r += rv; rows.forEach(function (x) { if (x.m === m) c += x.conf; }); } });
+    months.forEach(function (m) { var rv = revOf(yy, m - 1, b || bill); if (rv) { r += rv; rows.forEach(function (x) { if (x.m === m) c += x.conf; }); } });
     return r ? { c: c, r: r, rate: c / r * 100 } : null;
   }
   var rc = rate(y, cur), rp = hasPrev ? rate(y - 1, prev) : null;
@@ -854,7 +887,8 @@ function renderOverview() {
   var mLabel = st.month !== 'all' ? MONTHS[+st.month - 1] + ' ' + y : (months.length === 12 ? 'ทั้งปี ' + y : MONTHS[0] + '–' + MONTHS[months[months.length - 1] - 1] + ' ' + y);
 
   var h = '<section class="filters" aria-label="ตัวกรอง"><div class="fg"><span class="fl">ปี</span>' + chips('overview.year', S.years.map(function (yy) { return [yy, String(yy)]; }), st.year) + '</div>' +
-    monthSelect('overview.month', st) + '<span class="mut" style="font-size:13px">ช่วงที่แสดง: <b style="color:#0b0b0b">' + mLabel + '</b>' + (hasPrev ? ' เทียบช่วงเดียวกันปี ' + (y - 1) : '') + '</span></section>';
+    monthSelect('overview.month', st) +
+    '<div class="fg"><span class="fl">ประเภทบิล</span>' + chips('overview.bill', [['all', 'ทั้งหมด'], ['Normal', 'AB (Normal)'], ['Cold Chain', 'CC (Cold Chain)']], bill) + '</div>' + '<span class="mut" style="font-size:13px">ช่วงที่แสดง: <b style="color:#0b0b0b">' + mLabel + (bill !== 'all' ? ' · ' + BILL_LABEL[bill] : '') + '</b>' + (hasPrev ? ' เทียบช่วงเดียวกันปี ' + (y - 1) : '') + '</span></section>';
 
   h += '<section class="kpis">' +
     kpi('เคสแจ้งเคลม', fmt(cur.length), deltaTag(cur.length, hasPrev ? prev.length : null, true), '', 'data-nav="claim"') +
@@ -865,20 +899,25 @@ function renderOverview() {
 
   // อัตราเคลมรายเดือน
   var allMonths = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
-  function monthly(yy) {
-    var rs = S.rows.filter(function (r) { return r.y === yy; });
+  function monthly(yy, b) {
+    b = b || bill;
+    var rs = S.rows.filter(function (r) { return r.y === yy && (b === 'all' || r.billType === b); });
     return allMonths.map(function (i) {
-      var mr = rs.filter(function (r) { return r.m === i + 1; }), rv = revOf(yy, i, 'all');
+      var mr = rs.filter(function (r) { return r.m === i + 1; }), rv = revOf(yy, i, b);
       var future = yy === maxY && i + 1 > maxM;
       return { n: future ? null : mr.length, c: future ? null : sum(mr, 'conf'), rev: rv, rate: !future && rv ? sum(mr, 'conf') / rv * 100 : null };
     });
   }
   var mc = monthly(y), mp = monthly(y - 1);
   var hasRate = mc.some(function (x) { return x.rate != null; });
-  var series = [{ name: String(y - 1), color: YEAR_COLORS[y - 1] || C.gray, data: mp.map(function (x) { return x.rate; }) }, { name: String(y), color: YEAR_COLORS[y] || C.blue, data: mc.map(function (x) { return x.rate; }) }]
-    .filter(function (s) { return s.data.some(function (v) { return v != null; }); });
-  h += '<section class="card" id="ovRate"><div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;align-items:flex-start"><div><h2 class="ct">อัตราเคลมรายเดือน (ต่อรายได้ค่าขนส่ง)</h2><p class="cs">ยืนยันมูลค่าเคลม ÷ รายได้ค่าขนส่ง × 100 · ปี ' + y + ' เทียบ ' + (y - 1) + ' · กดจุดหรือแถวเพื่อเลือกเดือน</p></div>' +
-    (st.month !== 'all' ? '<button class="btn ghost" data-set="overview.month" data-val="all" style="min-height:36px">ดูทั้งปี</button>' : '') + '</div>';
+  var split = st.split && bill === 'all';
+  var series = split
+    ? [{ name: 'AB ' + y, color: C.orange, data: monthly(y, 'Normal').map(function (x) { return x.rate; }) }, { name: 'CC ' + y, color: C.blue, data: monthly(y, 'Cold Chain').map(function (x) { return x.rate; }) }]
+    : [{ name: String(y - 1), color: YEAR_COLORS[y - 1] || C.gray, data: mp.map(function (x) { return x.rate; }) }, { name: String(y), color: YEAR_COLORS[y] || C.blue, data: mc.map(function (x) { return x.rate; }) }];
+  series = series.filter(function (s) { return s.data.some(function (v) { return v != null; }); });
+  h += '<section class="card" id="ovRate"><div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;align-items:flex-start"><div><h2 class="ct">อัตราเคลมรายเดือน (ต่อรายได้ค่าขนส่ง)</h2><p class="cs">ยืนยันมูลค่าเคลม ÷ รายได้ค่าขนส่ง' + (bill !== 'all' ? ' ' + BILL_LABEL[bill] : '') + ' × 100 · กดจุดหรือแถวเพื่อเลือกเดือน</p></div>' +
+    '<div class="fg">' + (bill === 'all' ? chips('overview.split', [['', 'รวม ' + y + ' เทียบ ' + (y - 1)], ['1', 'แยก AB / CC ' + y]], split ? '1' : '') : '') +
+    (st.month !== 'all' ? '<button class="btn ghost" data-set="overview.month" data-val="all" style="min-height:36px">ดูทั้งปี</button>' : '') + '</div></div>';
   if (!hasRate) h += '<div class="empty">ยังไม่มีรายได้ของปี ' + y + ' ในแผ่น "รายได้" — เติมรายได้แล้วกราฟจะแสดงเอง</div>';
   else h += lineChart(series, { label: 'อัตราเคลมรายเดือน', yFmt: function (v) { return v.toFixed(2) + '%'; }, pointAttr: function (i) { return 'data-set="overview.month" data-val="' + (i + 1) + '" style="cursor:pointer"'; } });
   h += '<div class="tbox" style="margin-top:12px"><table><thead><tr><th>เดือน</th><th style="text-align:right">เคส</th><th style="text-align:right">ยืนยันมูลค่าเคลม</th><th style="text-align:right">รายได้ค่าขนส่ง</th><th style="text-align:right">อัตราเคลม ' + y + '</th><th style="text-align:right">อัตราเคลม ' + (y - 1) + '</th><th style="text-align:right">เปลี่ยนแปลง</th></tr></thead><tbody>' +
@@ -891,6 +930,24 @@ function renderOverview() {
         '<td class="num" style="font-weight:600">' + (a.rate != null ? a.rate.toFixed(2) + '%' : '—') + '</td><td class="num mut">' + (b.rate != null ? b.rate.toFixed(2) + '%' : '—') + '</td>' +
         '<td class="num">' + (d == null ? '—' : '<span style="color:' + (d > 0 ? '#a8231d' : '#1f4f8f') + '">' + (d > 0 ? '▲ ' : '▼ ') + Math.abs(d).toFixed(2) + '</span>') + '</td></tr>';
     }).join('') + '</tbody></table></div><p class="note">▲ สีแดง = อัตราเคลมสูงขึ้นจากปีก่อน (แย่ลง) · ▼ สีน้ำเงิน = ลดลง (ดีขึ้น) · เดือนล่าสุดอาจยังไม่นิ่ง</p></section>';
+
+
+  // สรุปตามประเภทบิล × ประเภทเคลม
+  var bills = [['Normal', 'AB (Normal)'], ['Cold Chain', 'CC (Cold Chain)'], ['*', 'รวม']];
+  var cols = DMG_GROUPS.concat(['*']);
+  function cell(rs, b, g) { return rs.filter(function (r) { return (b === '*' || r.billType === b) && (g === '*' || r.dmgGroup === g); }); }
+  h += '<section class="card"><h2 class="ct">สรุปตามประเภทบิล × ประเภทเคลม</h2><p class="cs">' + mLabel + ' · จำนวนเคส / มูลค่ายืนยัน · ▲▼ เทียบจำนวนเคสช่วงเดียวกันปีก่อน · กดช่องเพื่อดูรายการบิล</p><div class="tbox"><table><thead><tr><th>ประเภทบิล</th>' +
+    cols.map(function (g) { return '<th style="text-align:right">' + (g === '*' ? 'รวม' : g) + '</th>'; }).join('') + '<th style="text-align:right">อัตราเคลม</th><th style="text-align:right">ปีก่อน</th></tr></thead><tbody>' +
+    bills.map(function (b) {
+      var rr = rate(y, cell(curAll, b[0], '*'), b[0] === '*' ? 'all' : b[0]), rp2 = hasPrev ? rate(y - 1, cell(prevAll, b[0], '*'), b[0] === '*' ? 'all' : b[0]) : null;
+      return '<tr' + (b[0] === '*' ? ' style="font-weight:600"' : '') + '><td>' + b[1] + '</td>' + cols.map(function (g) {
+        var c = cell(curAll, b[0], g), p = cell(prevAll, b[0], g);
+        var d = hasPrev && p.length ? (c.length - p.length) / p.length * 100 : null;
+        var dt = !hasPrev ? '' : p.length < 10 ? '<div style="font-size:11px" class="mut">ปีก่อน ' + fmt(p.length) + ' เคส</div>' :
+          '<div style="font-size:11px;color:' + (d > 0 ? '#a8231d' : '#1f4f8f') + '">' + (d > 0 ? '▲ ' : '▼ ') + Math.abs(d).toFixed(0) + '%</div>';
+        return '<td class="num clickcell" data-drill-q="billType=' + b[0] + '|dmgGroup=' + g + '" data-title="' + esc(b[1] + ' · ' + (g === '*' ? 'ทุกประเภทเคลม' : g)) + '"><div>' + fmt(c.length) + ' เคส</div><div class="mut" style="font-size:12px">' + fmt(sum(c, 'conf')) + ' บาท</div>' + dt + '</td>';
+      }).join('') + '<td class="num" style="font-weight:600">' + (rr ? rr.rate.toFixed(2) + '%' : '—') + '</td><td class="num mut">' + (rp2 ? rp2.rate.toFixed(2) + '%' : '—') + '</td></tr>';
+    }).join('') + '</tbody></table></div><p class="note">สูญหาย = สินค้าสูญหาย + สูญหายบางส่วน + สูญหายทั้งหมด · ไม่นับประเภท "บิลส่งไม่ได้ แก้ไขที่อยู่/เบอร์โทร" เพราะไม่ใช่เคสเคลม</p></section>';
 
   // สรุปสั้นจากเมนูอื่น
   var topC = groupBy(cur, function (r) { return r.sender; }).sort(byN).slice(0, 5);
@@ -1000,7 +1057,7 @@ function renderCustomer() {
   var cap = rows.filter(function (r) { return r.conf > 0 && r.req > r.conf; });
   h += '<section class="grid g3">' +
     '<div class="card"><h2 class="ct">กลุ่มสินค้าที่เสียหาย</h2><p class="cs">เคส · มูลค่ายืนยัน (บาท)</p>' + hbars(groupBy(rows, function (r) { return r.group || 'ยังไม่ระบุ'; }).sort(byN).slice(0, 6), { color: C.orange, drill: 'group' }) + '</div>' +
-    '<div class="card"><h2 class="ct">ประเภทความเสียหาย</h2><p class="cs">เคส · มูลค่ายืนยัน (บาท)</p>' + hbars(groupBy(rows, function (r) { return r.damage; }).sort(byN).slice(0, 6), { drill: 'damage' }) + '</div>' +
+    '<div class="card"><h2 class="ct">ประเภทเคลม</h2><p class="cs">เคส · มูลค่ายืนยัน (บาท)</p>' + dmgBars(rows) + '</div>' +
     '<div class="card"><h2 class="ct">DC ปลายทาง (จุดลง)</h2><p class="cs">6 อันดับแรก</p>' + hbars(groupBy(rows, function (r) { return r.dest; }).sort(byN).slice(0, 6), { color: C.violet, drill: 'dest' }) + '</div>' +
     '<div class="card"><h2 class="ct">ผู้รับผิดชอบ</h2><p class="cs">จากเคสที่ประเมินแล้ว ' + fmt(rows.filter(function (r) { return r.assessed; }).length) + ' เคส</p>' + hbars(groupBy(rows, function (r) { return r.resp; }).sort(byN).slice(0, 5), { color: C.aqua, drill: 'resp' }) + '</div></section>';
 
@@ -1021,7 +1078,7 @@ function renderCustomer() {
     historyTable(hist, 'customer', [
       { h: 'วันที่เอกสาร', f: function (r) { return thaiDate(r.date); } },
       { h: 'เลขที่บิล', f: function (r) { return esc(r.bill); } },
-      { h: 'ประเภทความเสียหาย', f: function (r) { return esc(r.damage); } },
+      { h: 'ประเภทเคลม', f: function (r) { return esc(r.dmgGroup) + (r.damage !== 'สินค้า' + r.dmgGroup ? ' <span class="mut">· ' + esc(r.damage) + '</span>' : ''); } },
       { h: 'กลุ่มสินค้า', f: function (r) { return r.group ? esc(r.group) : '<span class="mut">ยังไม่ระบุ</span>'; } },
       { h: 'DC ปลายทาง', f: function (r) { return esc(r.dest); } },
       { h: 'หมายเหตุ', f: function (r) { return r.returned ? '<span class="tag" style="background:#efeee9;color:#52514e">ส่งกลับ</span> <span class="mut">จาก ' + esc(r.shipper) + '</span>' : ''; } },
@@ -1124,7 +1181,7 @@ function renderUnit() {
     historyTable(hist, 'unit', [
       { h: 'วันที่เอกสาร', f: function (r) { return thaiDate(r.date); } },
       { h: 'เลขที่บิล', f: function (r) { return esc(r.bill); } },
-      { h: 'ประเภทความเสียหาย', f: function (r) { return esc(r.damage); } },
+      { h: 'ประเภทเคลม', f: function (r) { return esc(r.dmgGroup) + (r.damage !== 'สินค้า' + r.dmgGroup ? ' <span class="mut">· ' + esc(r.damage) + '</span>' : ''); } },
       { h: 'ส่วนงาน', f: function (r) { return esc(r.section.replace(/^\d+\s*/, '')); } },
       { h: 'จุดที่เกิดเหตุ', f: function (r) { return esc(r.spot.replace(/^\d+\s*/, '')); } },
       { h: 'ผู้รับผิดชอบ', f: function (r) { return esc(r.resp.replace(/^\d+\s*/, '')); } },
@@ -1198,7 +1255,7 @@ document.addEventListener('mousedown', function (e) { if (e.target.id === 'modal
 function render() {
   var p = S.page;
   document.querySelectorAll('nav.tabs a').forEach(function (a) { a.classList.toggle('on', a.dataset.page === p); });
-  S.ctx = [];
+  S.ctx = []; S.ctxAll = null;
   var html = p === 'assess' ? renderAssess() : p === 'customer' ? renderCustomer() : p === 'unit' ? renderUnit() : p === 'claim' ? renderClaim() : renderOverview();
   $('view').innerHTML = html;
   $('srcInfo').textContent = 'ข้อมูลถึง ' + thaiDate(S.maxDate) + ' · โหลดเมื่อ ' + S.updated;
@@ -1215,6 +1272,7 @@ function setVal(path, val) {
   var p = path.split('.'), o = S[p[0]];
   o[p[1]] = val;
   if (p[1] === 'year' && (val === 'all' || p[0] === 'overview')) { if (val === 'all') o.month = 'all'; }
+  if (p[0] === 'overview' && p[1] === 'split') o.split = !!val;
   if (p[0] === 'unit' && p[1] === 'region') { o.unit = ''; var u = groupBy(S.rows.filter(function (r) { return r.region === val && r.unit; }), function (r) { return r.unit; }).sort(byN)[0]; o.unit = u ? u.key : ''; }
   if (p[0] === 'unit' && (p[1] === 'unit' || p[1] === 'region')) { o.section = 'all'; o.year = 'all'; o.years = null; }
   if (o.pageNo != null) o.pageNo = 0;
@@ -1222,10 +1280,16 @@ function setVal(path, val) {
 }
 
 document.addEventListener('click', function (e) {
-  var t = e.target.closest('[data-set],[data-toggle-year],[data-page-nav],[data-go],[data-act],[data-drill],[data-drill-field],[data-nav],[data-scroll],[data-modal]');
+  var t = e.target.closest('[data-drill-q],[data-set],[data-toggle-year],[data-page-nav],[data-go],[data-act],[data-drill],[data-drill-field],[data-nav],[data-scroll],[data-modal]');
   if (!t || t.tagName === 'SELECT') return;
   if (t.dataset.modal) { modalAction(t.dataset.modal); return; }
   if (t.dataset.drill) { var d = DRILL[t.dataset.drill]; openModal(d.t, S.ctx.filter(d.f)); return; }
+  if (t.dataset.drillQ) {
+    var conds = t.dataset.drillQ.split('|').map(function (x) { var kv = x.split('='); return [kv[0], kv.slice(1).join('=')]; });
+    var src = S.ctxAll || S.ctx;
+    openModal(t.dataset.title || 'รายการบิล', src.filter(function (r) { return conds.every(function (c) { return c[1] === '*' || r[c[0]] === c[1]; }); }));
+    return;
+  }
   if (t.dataset.drillField) {
     var fld = t.dataset.drillField, val = t.dataset.val;
     openModal((FIELD_LABEL[fld] || fld) + ': ' + val, S.ctx.filter(function (r) { return val === 'ยังไม่ระบุ' ? !r[fld] : r[fld] === val; }));
@@ -1233,7 +1297,7 @@ document.addEventListener('click', function (e) {
   }
   if (t.dataset.nav) {
     var src = S.overview, dst = S[t.dataset.nav];
-    if (S.page === 'overview' && dst) { dst.year = src.year; dst.month = src.month; }
+    if (S.page === 'overview' && dst) { dst.year = src.year; dst.month = src.month; if (t.dataset.nav === 'claim') dst.bill = src.bill || 'all'; }
     location.hash = '#' + t.dataset.nav; return;
   }
   if (t.dataset.scroll) { var el = $(t.dataset.scroll); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
