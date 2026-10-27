@@ -343,8 +343,8 @@ function prepare(payload) {
     r.dec = decCode(r.decision);
     r.decision = stripCode(DEC_LABEL[r.dec] || r.decision);
     r.claimed = r.dec === '01' || r.dec === '02' || r.dec === '03';
-    r.clearCode = code(r.clearSt);
-    r.claimCode = code(r.claimSt);
+    r.clearCode = code(r.clearSt) || (/^CC\b/.test(r.clearSt) ? 'CC' : '');
+    r.claimCode = code(r.claimSt) || (/^CC\b/.test(r.claimSt) ? 'CC' : '');
     r.pending = !!PENDING[r.clearCode];
     r.charged = r.shEmp + r.shSub + r.shDp;
     r.assessed = !!r.resp;
@@ -590,11 +590,21 @@ function historyTable(rows, stateKey, cols) {
     '<button class="chip" data-page-nav="' + stateKey + '" data-val="1"' + (st.pageNo < pages - 1 ? '' : ' disabled') + '>ถัดไป</button></div></div>';
   return h;
 }
-function statusTag(r) {
-  var cc = r.clearCode || r.claimCode, txt = r.clearSt || r.claimSt || '—';
-  var bg = PENDING[r.clearCode] || r.claimCode === 'A00' || r.claimCode === 'A03' ? '#fbe9e8;color:#a8231d' : (r.clearCode === 'A89' || r.claimCode === 'A89' || cc === 'CC') ? '#efeee9;color:#52514e' : '#e8eff8;color:#1f4f8f';
+// สถานะเคลม (ฝั่งลูกค้า) + สาเหตุไม่เคลม
+function claimStatusCell(r) {
+  var c = r.claimCode, txt = r.claimSt || '—';
+  var bg = c === 'A00' || c === 'A03' ? '#fbe9e8;color:#a8231d' : c === 'A89' || c === 'CC' ? '#efeee9;color:#52514e' : '#e8eff8;color:#1f4f8f';
+  var h = '<span class="tag" style="background:' + bg + '">' + esc(txt) + '</span>';
+  if (c === 'A89' || r.dec === '04' || r.dec === '05') h += '<div style="font-size:12px;color:#5f5e5a;margin-top:3px;white-space:normal;min-width:180px">' + esc(r.noClaim || 'ไม่ระบุสาเหตุ') + '</div>';
+  return h;
+}
+// สถานะเคลียร์ (หาผู้รับผิดชอบ)
+function clearStatusCell(r) {
+  var c = r.clearCode, txt = r.clearSt || '—';
+  var bg = PENDING[c] ? '#fbe9e8;color:#a8231d' : c === 'A89' || c === 'CC' ? '#efeee9;color:#52514e' : '#e8eff8;color:#1f4f8f';
   return '<span class="tag" style="background:' + bg + '">' + esc(txt) + '</span>';
 }
+var statusTag = clearStatusCell;
 
 function downloadCSV(rows, name) {
   var head = ['วันที่เอกสาร', 'เลขที่บิล', 'ประเภทเคลม', 'ประเภทความเสียหาย', 'ประเภทบิล', 'ประเภทลูกค้า', 'ลูกค้า', 'ผู้ส่งตามระบบ', 'ผู้รับ', 'ส่งกลับผู้ส่ง', 'กลุ่มสินค้า', 'จุดลง', 'ผลพิจารณา', 'สาเหตุไม่เคลม', 'มูลค่ายื่นเคลม', 'ยืนยันมูลค่าเคลม', 'จุดที่เกิดเหตุ', 'หน่วยงานที่ทำให้เกิดเหตุ', 'ภาค', 'ส่วนงาน', 'ผู้รับผิดชอบ', 'บริษัท(บาท)', 'พนักงาน(บาท)', 'รถร่วม(บาท)', 'DP(บาท)', 'สถานะเคลม', 'สถานะเคลียร์'];
@@ -1084,8 +1094,7 @@ function renderCustomer() {
       { h: 'หมายเหตุ', f: function (r) { return r.returned ? '<span class="tag" style="background:#efeee9;color:#52514e">ส่งกลับ</span> <span class="mut">จาก ' + esc(r.shipper) + '</span>' : ''; } },
       { h: 'ยื่นเคลม', num: 1, f: function (r) { return fmt2(r.req); } },
       { h: 'ยืนยัน', num: 1, f: function (r) { return r.conf ? '<b>' + fmt2(r.conf) + '</b>' : '—'; } },
-      { h: 'สถานะเคลม', f: function (r) { return esc(r.claimSt || '—'); } },
-      { h: 'สถานะเคลียร์', f: statusTag }
+      { h: 'สถานะเคลม', f: claimStatusCell }
     ]) + '</section>';
   return h;
 }
@@ -1187,7 +1196,7 @@ function renderUnit() {
       { h: 'ผู้รับผิดชอบ', f: function (r) { return esc(r.resp.replace(/^\d+\s*/, '')); } },
       { h: 'มูลค่า', num: 1, f: function (r) { return fmt2(r.conf); } },
       { h: 'เรียกเก็บ', num: 1, f: function (r) { return r.charged ? '<b>' + fmt2(r.charged) + '</b>' : '—'; } },
-      { h: 'สถานะเคลียร์', f: statusTag }
+      { h: 'สถานะเคลียร์', f: clearStatusCell }
     ]) + '</section>';
   return h;
 }
@@ -1232,15 +1241,19 @@ function renderModal() {
   box.innerHTML = '<div class="box" role="dialog" aria-modal="true" aria-label="' + esc(md.title) + '"><div class="mh"><div><div class="mut" style="font-size:12px">รายการบิล · ' + esc(periodHint()) + '</div><h2 style="margin:2px 0 4px;font-size:18px">' + esc(md.title) + '</h2>' +
     '<div class="mut" style="font-size:13px">' + fmt(rows.length) + ' เคส · ยื่น ' + fmt(sum(rows, 'req')) + ' บาท · ยืนยัน ' + fmt(sum(rows, 'conf')) + ' บาท</div></div>' +
     '<div class="fg"><button class="btn ghost" data-modal="csv" style="min-height:40px">ดาวน์โหลด CSV (Excel)</button><button class="x" data-modal="close" aria-label="ปิด">×</button></div></div>' +
-    '<div class="tbox"><table><thead><tr><th>วันที่เอกสาร</th><th>เลขที่บิล</th><th>ลูกค้า</th><th>ประเภทความเสียหาย</th><th>กลุ่มสินค้า</th><th>หน่วยงาน</th><th style="text-align:right">ยื่นเคลม</th><th style="text-align:right">ยืนยัน</th><th>สถานะ</th></tr></thead><tbody>' +
+    '<div class="tbox"><table><thead><tr><th>วันที่เอกสาร</th><th>เลขที่บิล</th><th>ลูกค้า</th><th>ประเภทความเสียหาย</th><th>กลุ่มสินค้า</th><th>หน่วยงาน</th><th style="text-align:right">ยื่นเคลม</th><th style="text-align:right">ยืนยัน</th>' + statusHeads() + '</tr></thead><tbody>' +
     (part.length ? part.map(function (r) {
       return '<tr><td class="nw">' + thaiDate(r.date) + '</td><td class="nw">' + esc(r.bill) + '</td><td>' + esc(r.sender) + (r.returned ? ' <span class="tag" style="background:#efeee9;color:#52514e">ส่งกลับ</span>' : '') + '</td><td>' + esc(r.damage) + '</td><td>' + esc(r.group || '—') + '</td><td>' + esc(r.unit || '—') + '</td>' +
-        '<td class="num nw">' + fmt2(r.req) + '</td><td class="num nw" style="font-weight:600">' + (r.conf ? fmt2(r.conf) : '—') + '</td><td class="nw">' + statusTag(r) + '</td></tr>';
-    }).join('') : '<tr><td colspan="9" class="empty">ไม่มีเคส</td></tr>') + '</tbody></table></div>' +
+        '<td class="num nw">' + fmt2(r.req) + '</td><td class="num nw" style="font-weight:600">' + (r.conf ? fmt2(r.conf) : '—') + '</td>' + statusCells(r) + '</tr>';
+    }).join('') : '<tr><td colspan="10" class="empty">ไม่มีเคส</td></tr>') + '</tbody></table></div>' +
     '<div class="pager"><span>หน้า ' + (md.page + 1) + ' จาก ' + pages + '</span><div class="fg"><button class="chip" data-modal="prev"' + (md.page ? '' : ' disabled') + '>ก่อนหน้า</button><button class="chip" data-modal="next"' + (md.page < pages - 1 ? '' : ' disabled') + '>ถัดไป</button></div></div></div>';
   box.classList.remove('hidden');
   document.body.style.overflow = 'hidden';
 }
+// สถานะในหน้าต่างรายการบิล: เมนู 1, 3 = สถานะเคลม · เมนู 2, 4 = สถานะเคลียร์ · ภาพรวม = ทั้งสอง
+function statusMode() { return S.page === 'claim' || S.page === 'customer' ? 'claim' : S.page === 'overview' ? 'both' : 'clear'; }
+function statusHeads() { var md = statusMode(); return (md !== 'clear' ? '<th>สถานะเคลม</th>' : '') + (md !== 'claim' ? '<th>สถานะเคลียร์</th>' : ''); }
+function statusCells(r) { var md = statusMode(); return (md !== 'clear' ? '<td class="nw">' + claimStatusCell(r) + '</td>' : '') + (md !== 'claim' ? '<td class="nw">' + clearStatusCell(r) + '</td>' : ''); }
 function periodHint() {
   var p = S.page;
   if (p === 'overview') return S.overview.month !== 'all' ? MONTHS[+S.overview.month - 1] + ' ' + S.overview.year : 'ปี ' + S.overview.year;
